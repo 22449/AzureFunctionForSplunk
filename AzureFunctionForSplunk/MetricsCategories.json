@@ -1,4 +1,6 @@
-﻿{
+﻿// TEST
+
+{
   "MICROSOFT.COMPUTE/VIRTUALMACHINES": "amm:compute:vm",
   "MICROSOFT.WEB/SITES": "amm:web:sites",
   "MICROSOFT.SQL/SERVERS/DATABASES": "amm:sqlserver:database",
@@ -8,3 +10,4 @@
   "MICROSOFT.WEB/SERVERFARMS": "amm:web:serverfarm",
   "MICROSOFT.BATCH/BATCHACCOUNTS": "amm:batch:accounts"
 }
+
