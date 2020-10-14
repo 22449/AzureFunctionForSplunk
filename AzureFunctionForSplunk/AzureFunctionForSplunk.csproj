@@ -27,4 +27,5 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <ProjectExtensions><VisualStudio><UserProperties host_1json__JsonSchema="https://json.schemastore.org/host-meta" /></VisualStudio></ProjectExtensions>
 </Project>

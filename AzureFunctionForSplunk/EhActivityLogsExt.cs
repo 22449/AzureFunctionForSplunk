@@ -24,8 +24,10 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
+using Microsoft.Azure.EventHubs;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace AzureFunctionForSplunk
@@ -34,13 +36,22 @@ namespace AzureFunctionForSplunk
     {
         [FunctionName("EhActivityLogsExt")]
         public static async Task Run(
-            [EventHubTrigger("%input-hub-name-activity-log%", Connection = "hubConnection", ConsumerGroup = "%consumer-group-activity-log%")]string[] messages,
+            [EventHubTrigger("%input-hub-name-activity-log%", Connection = "hubConnection", ConsumerGroup = "%consumer-group-activity-log%")] EventData[] eventHubMessages,
             [EventHub("%output-hub-name-proxy%", Connection = "outputHubConnection")]IAsyncCollector<string> outputEvents,
             IBinder blobFaultBinder,
             IBinder incomingBatchBinder,
             Binder queueFaultBinder, 
             ILogger log)
         {
+            string[] messages = new string[eventHubMessages.Length];
+            for(int i=0; i< eventHubMessages.Length;i++)
+            {
+                EventData myEventHubMessage = eventHubMessages[i];
+
+                messages[i] = Encoding.UTF8.GetString(myEventHubMessage.Body);
+                log.LogInformation($"EnqueuedTimeUtc={myEventHubMessage.SystemProperties.EnqueuedTimeUtc.ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff'Z'")}, SequenceNumber={myEventHubMessage.SystemProperties.SequenceNumber}, Offset={myEventHubMessage.SystemProperties.Offset}, PartitionKey={myEventHubMessage.SystemProperties.PartitionKey}");
+            }
+
             var runner = new Runner();
             await runner.Run<ActivityLogMessages, ActivityLogsSplunkEventMessages>(messages, blobFaultBinder, queueFaultBinder, incomingBatchBinder, outputEvents, log);
         }
