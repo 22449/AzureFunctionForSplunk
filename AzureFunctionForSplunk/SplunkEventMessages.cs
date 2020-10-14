@@ -76,7 +76,7 @@ namespace AzureFunctionForSplunk
             string outputBinding = Utils.getEnvironmentVariable("outputBinding");
             if (outputBinding.Length == 0)
             {
-                Log.LogError("Value for outputBinding is required. Permitted values are: 'proxy', 'hec', 'eventhub'.");
+                Log.LogError("Value for outputBinding is required. Permitted values are: 'proxy', 'hec', 'hecbulk', 'eventhub'.");
                 return;
             }
 
@@ -90,6 +90,9 @@ namespace AzureFunctionForSplunk
             {
                 case "hec":
                     await Utils.obHEC(splunkEventMessages, Log);
+                    break;
+                case "hecbulk":
+                    await Utils.obHECBulk(splunkEventMessages, Log);
                     break;
                 case "proxy":
                     await Utils.obProxy(splunkEventMessages, Log);

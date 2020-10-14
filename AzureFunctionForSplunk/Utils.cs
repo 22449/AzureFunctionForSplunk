@@ -214,7 +214,8 @@ namespace AzureFunctionForSplunk
                 );
 
                 accessToken = await azureServiceTokenProvider.GetAccessTokenAsync(serviceResourceIDURI);
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 log.LogError($"Error acquiring token from AzureServiceTokenProvider: {ex.Message}");
                 throw;
@@ -226,11 +227,7 @@ namespace AzureFunctionForSplunk
 
             var client = new SingleHttpClientInstance();
 
-            StringBuilder bulkTransmission = new StringBuilder();
-            foreach (string item in standardizedEvents)
-            {
-                bulkTransmission.Append(item);
-            }
+            StringBuilder bulkTransmission = CreateBatch(standardizedEvents);
             try
             {
                 var httpRequestMessage = new HttpRequestMessage
@@ -259,23 +256,38 @@ namespace AzureFunctionForSplunk
             }
         }
 
-        public static async Task obHEC(List<string> standardizedEvents, ILogger log)
+        private static StringBuilder CreateBatch(List<string> standardizedEvents)
         {
-            string splunkAddress = Utils.getEnvironmentVariable("splunkAddress");
-            string splunkToken = Utils.getEnvironmentVariable("splunkToken");
-            if (splunkAddress.Length == 0 || splunkToken.Length == 0)
+            StringBuilder bulkTransmission = new StringBuilder();
+            foreach (string item in standardizedEvents)
             {
-                log.LogError("Values for splunkAddress and splunkToken are required.");
-                throw new ArgumentException();
+                bulkTransmission.Append(item);
             }
 
-            if (!string.IsNullOrWhiteSpace(splunkCertThumbprint))
+            return bulkTransmission;
+        }
+
+        private static string CreateSplunkBatch(List<string> standardizedEvents)
+        {
+            StringBuilder bulkTransmission = new StringBuilder();
+            bulkTransmission.Append("[");
+            for(int i=0;i< standardizedEvents.Count;i++)
             {
-                if (!splunkAddress.ToLower().StartsWith("https"))
+                bulkTransmission.Append(standardizedEvents[i]);
+                if(i < standardizedEvents.Count-1)
                 {
-                    throw new ArgumentException("Having provided a Splunk cert thumbprint, the address must be https://whatever");
+                    bulkTransmission.Append(",");
                 }
             }
+
+            bulkTransmission.Append("]");
+            return bulkTransmission.ToString();
+        }
+
+        public static async Task obHEC(List<string> standardizedEvents, ILogger log)
+        {
+            string splunkAddress, splunkToken;
+            CheckSplunkConfig(log, out splunkAddress, out splunkToken);
 
             //ServicePointManager.Expect100Continue = true;
             //ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
@@ -313,5 +325,64 @@ namespace AzureFunctionForSplunk
             }
         }
 
+        public static async Task obHECBulk(List<string> standardizedEvents, ILogger log)
+        {
+            string splunkAddress, splunkToken;
+            CheckSplunkConfig(log, out splunkAddress, out splunkToken);
+            string bulkTransmissionPayload = CreateSplunkBatch(standardizedEvents);
+
+            //ServicePointManager.Expect100Continue = true;
+            //ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            //ServicePointManager.ServerCertificateValidationCallback += new RemoteCertificateValidationCallback(ValidateMyCert);
+
+            var client = new SingleHttpClientInstance();
+
+            try
+            {
+                var httpRequestMessage = new HttpRequestMessage
+                {
+                    Method = HttpMethod.Post,
+                    RequestUri = new Uri(splunkAddress),
+                    Headers = {
+                            { HttpRequestHeader.Authorization.ToString(), "Splunk " + splunkToken }
+                        },
+                    Content = new StringContent(bulkTransmissionPayload, Encoding.UTF8, "application/json")
+                };
+
+                HttpResponseMessage response = await SingleHttpClientInstance.SendToService(httpRequestMessage);
+                if (response.StatusCode != HttpStatusCode.OK)
+                {
+                    throw new System.Net.Http.HttpRequestException($"StatusCode from Splunk: {response.StatusCode}, and reason: {response.ReasonPhrase}");
+                }
+            }
+            catch (System.Net.Http.HttpRequestException e)
+            {
+                throw new System.Net.Http.HttpRequestException("Sending to Splunk. Is Splunk service running?", e);
+            }
+            catch (Exception f)
+            {
+                throw new System.Exception("Sending to Splunk. Unplanned exception.", f);
+            }
+
+        }
+
+        private static void CheckSplunkConfig(ILogger log, out string splunkAddress, out string splunkToken)
+        {
+            splunkAddress = Utils.getEnvironmentVariable("splunkAddress");
+            splunkToken = Utils.getEnvironmentVariable("splunkToken");
+            if (splunkAddress.Length == 0 || splunkToken.Length == 0)
+            {
+                log.LogError("Values for splunkAddress and splunkToken are required.");
+                throw new ArgumentException();
+            }
+
+            if (!string.IsNullOrWhiteSpace(splunkCertThumbprint))
+            {
+                if (!splunkAddress.ToLower().StartsWith("https"))
+                {
+                    throw new ArgumentException("Having provided a Splunk cert thumbprint, the address must be https://whatever");
+                }
+            }
+        }
     }
 }
