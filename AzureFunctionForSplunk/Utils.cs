@@ -24,12 +24,14 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
+using Microsoft.Azure.Amqp;
 using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -329,31 +331,25 @@ namespace AzureFunctionForSplunk
         {
             string splunkAddress, splunkToken;
             CheckSplunkConfig(log, out splunkAddress, out splunkToken);
+
             string bulkTransmissionPayload = CreateSplunkBatch(standardizedEvents);
 
             //ServicePointManager.Expect100Continue = true;
             //ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             //ServicePointManager.ServerCertificateValidationCallback += new RemoteCertificateValidationCallback(ValidateMyCert);
-
             var client = new SingleHttpClientInstance();
+            await SendToSplunk(splunkAddress, splunkToken, bulkTransmissionPayload, log);
 
+        }
+
+        private static async Task SendToSplunk(string splunkAddress, string splunkToken, string bulkTransmissionPayload, ILogger log)
+        {
+            Stopwatch stopWatch = Stopwatch.StartNew();
+            HttpStatusCode statusCode = HttpStatusCode.OK;
             try
             {
-                var httpRequestMessage = new HttpRequestMessage
-                {
-                    Method = HttpMethod.Post,
-                    RequestUri = new Uri(splunkAddress),
-                    Headers = {
-                            { HttpRequestHeader.Authorization.ToString(), "Splunk " + splunkToken }
-                        },
-                    Content = new StringContent(bulkTransmissionPayload, Encoding.UTF8, "application/json")
-                };
-
-                HttpResponseMessage response = await SingleHttpClientInstance.SendToService(httpRequestMessage);
-                if (response.StatusCode != HttpStatusCode.OK)
-                {
-                    throw new System.Net.Http.HttpRequestException($"StatusCode from Splunk: {response.StatusCode}, and reason: {response.ReasonPhrase}");
-                }
+                HttpRequestMessage httpRequestMessage = BuildHttpRequest(splunkAddress, splunkToken, bulkTransmissionPayload);
+                statusCode = await SendHttpRequest(httpRequestMessage);
             }
             catch (System.Net.Http.HttpRequestException e)
             {
@@ -363,7 +359,34 @@ namespace AzureFunctionForSplunk
             {
                 throw new System.Exception("Sending to Splunk. Unplanned exception.", f);
             }
+            finally
+            {
+                stopWatch.Stop();
+                log.LogInformation($"Sending to splunk with Response={statusCode}, Duration={stopWatch.ElapsedMilliseconds} ms");
+            }
+        }
 
+        private static HttpRequestMessage BuildHttpRequest(string splunkAddress, string splunkToken, string bulkTransmissionPayload)
+        {
+            return new HttpRequestMessage
+            {
+                Method = HttpMethod.Post,
+                RequestUri = new Uri(splunkAddress),
+                Headers = {
+                            { HttpRequestHeader.Authorization.ToString(), "Splunk " + splunkToken }
+                        },
+                Content = new StringContent(bulkTransmissionPayload, Encoding.UTF8, "application/json")
+            };
+        }
+
+        private static async Task<HttpStatusCode> SendHttpRequest(HttpRequestMessage httpRequestMessage)
+        {
+            HttpResponseMessage response = await SingleHttpClientInstance.SendToService(httpRequestMessage);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new HttpRequestException($"StatusCode from Splunk: {response.StatusCode}, and reason: {response.ReasonPhrase}");
+            }
+            return response.StatusCode;
         }
 
         private static void CheckSplunkConfig(ILogger log, out string splunkAddress, out string splunkToken)

@@ -27,6 +27,7 @@
 using Microsoft.Azure.EventHubs;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -44,12 +45,14 @@ namespace AzureFunctionForSplunk
             ILogger log)
         {
             string[] messages = new string[eventHubMessages.Length];
-            for(int i=0; i< eventHubMessages.Length;i++)
+            log.LogInformation($"FunctionStartTime={DateTime.Now.ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff'Z'")}, received {eventHubMessages.Length } messages");
+
+            for (int i=0; i< eventHubMessages.Length;i++)
             {
                 EventData myEventHubMessage = eventHubMessages[i];
 
                 messages[i] = Encoding.UTF8.GetString(myEventHubMessage.Body);
-                log.LogInformation($"EnqueuedTimeUtc={myEventHubMessage.SystemProperties.EnqueuedTimeUtc.ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff'Z'")}, SequenceNumber={myEventHubMessage.SystemProperties.SequenceNumber}, Offset={myEventHubMessage.SystemProperties.Offset}, PartitionKey={myEventHubMessage.SystemProperties.PartitionKey}");
+                log.LogInformation($"EnqueuedTimeUtc={myEventHubMessage.SystemProperties.EnqueuedTimeUtc.ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff'Z'")}, SequenceNumber={myEventHubMessage.SystemProperties.SequenceNumber}, Offset={myEventHubMessage.SystemProperties.Offset}, PartitionKey={myEventHubMessage.SystemProperties.PartitionKey}, message {i} of {eventHubMessages.Length+1}");
             }
 
             var runner = new Runner();
